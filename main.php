@@ -28,16 +28,56 @@ $stateList    = buildStateList($augGrammar, $terminals, $nonTerminals);
 $mainOutput   = "Augmented Grammar\n-----------------\n";
 $mainOutput  .= displayGrammar($augGrammar);
 $mainOutput  .= "\nSets of LR(0) Items\n-------------------\n";
-//$mainOutput  .= displayStateList($stateList);
+$mainOutput  .= displayStateList($stateList);
 
 writeOutput($mainOutput, $outFileName);
 
 function buildStateList($g, $t, $nt) {
+    $state0 = array();
+    foreach ($g as $prod) {
+        $state0[] = array(
+            'lhs'  => $prod['lhs'],
+            'rhs'  => '@' . $prod['rhs'],
+            'goto' => '',
+        );
+    }
+
+    $currIdx = 0;
+    $states  = array($state0);
     do {
         $statesAdded = false;
+        $goto        = array();
+        $currState   = $states[$currIdx];
 
-        echo "test\n";
+        foreach ($currState as $prod) {
+            $rest = explode('@', $prod['rhs']);
+            $nextChar = $rest[1][0];
+            $next = $rest[0] . $rest[1][0] . '@' . substr($rest[1], 1);
+            $goto[$nextChar][] = array(
+                'lhs' => $prod['lhs'],
+                'rhs' => $next,
+            );
+        }
+        foreach ($goto as $char => &$state) {
+            $oldCount = count($states);
+            $state['num'] = getStateNum($state, $states);
+            $newCount = count($states);
+
+            if ($oldCount != $newCount) {
+                $statesAdded = true;
+            }
+        }
+        foreach ($currState as &$prod) {
+            $rest = explode('@', $prod['rhs']);
+            $nextChar = $rest[1][0];
+            if (isset($goto[$nextChar])) {
+                $prod['goto'] = "goto({$nextChar})=I{$goto[$nextChar]['num']}";
+                unset($goto[$nextChar]);
+            }
+        }
     } while ($statesAdded);
+
+    return $states;
 }
 
 function buildBaseGrammar($inFileName) {
@@ -127,6 +167,50 @@ function displayGrammar($grammar) {
         $out .= $g['lhs'] . '->' . $g['rhs'] . "\n";
     }
     return $out;
+}
+
+function displayStateList($stateList) {
+    $out = '';
+    $i   = 0;
+    foreach ($stateList as $s) {
+        $out .= "I{$i}:\n";
+        foreach ($s as $prod) {
+            $out .= '   ' . $prod['lhs'] . '->' . $prod['rhs'];
+            if (isset($prod['goto']) && !empty($prod['goto'])) {
+                $out .= str_repeat(' ', 17 - strlen($prod['rhs']));
+//                $out .= $prod['goto'];
+                $out .= '...';
+            }
+            $out .= "\n";
+        }
+    }
+    return $out;
+}
+
+function getStateNum($state, &$stateList) {
+    $n = 0;
+    foreach ($stateList as $existing) {
+        if (count($existing) != count($state)) {
+            continue;
+        }
+        $matches = true;
+        for ($i = 0; $i < count($existing); $i++) {
+            if ($state[$i]['lhs'] != $existing[$i]['lhs']) {
+                $matches = false;
+                break;
+            }
+            if ($state[$i]['rhs'] != $existing[$i]['rhs']) {
+                $matches = false;
+                break;
+            }
+        }
+        if ($matches) {
+            return $n;
+        }
+        $n++;
+    }
+    $stateList[] = $state;
+    return count($stateList) - 1;
 }
 
 function writeOutput($o, $outFileName) {
