@@ -19,215 +19,252 @@ if (empty($outFileName)) {
 }
 $outFileName = dirname(__FILE__) . '/' . $outFileName;
 
-$baseGrammar = buildBaseGrammar($inFileName);
-$augGrammar  = buildAugmentedGrammar($baseGrammar);
-$stateList   = buildStateList($augGrammar);
+$g = new Lr0Grammar($inFileName, $outFileName);
+$g->buildGrammar();
+$g->buildAugmentedGrammar();
+$g->buildStateList();
+$g->writeToConsole();
 
-$mainOutput  = "Augmented Grammar\n-----------------\n";
-$mainOutput .= displayGrammar($augGrammar);
-$mainOutput .= "\nSets of LR(0) Items\n-------------------\n";
-$mainOutput  .= displayStateList($stateList);
+//$baseGrammar = buildBaseGrammar($inFileName);
+//$augGrammar  = buildAugmentedGrammar($baseGrammar);
+//$stateList   = buildStateList($augGrammar);
+//var_dump($stateList);
+//exit;
+//
+//$mainOutput  = "Augmented Grammar\n-----------------\n";
+//$mainOutput .= displayGrammar($augGrammar);
+//$mainOutput .= "\nSets of LR(0) Items\n-------------------\n";
+//$mainOutput  .= displayStateList($stateList);
+//
+//writeOutput($mainOutput, $outFileName);
 
-writeOutput($mainOutput, $outFileName);
+class Lr0Grammar {
+    private $inFileName  = '';
+    private $outFileName = '';
+    private $inFile      = NULL;
+    private $outFile     = NULL;
 
-function buildStateList($grammar) {
-    $states   = array();
-    $states[] = buildStateZero($grammar);
-    for ($i = 0; $i < count($states); $i++) {
-        $curr = $states[$i];
-        $s = 0;
-        foreach ($curr as &$prod) {
-            $prod['goto'] = getGotoState($prod, $curr, $states, $grammar);
-            if (!is_null($prod['goto'])) {
-                $prod['goto'] = formatGoto($prod);
-            }
-            $s++;
-        }
-    }
-    return $states;
-}
+    private $rawInput    = '';
 
-function formatGoto($production) {
-    $prod = explode('@', $production['rhs']);
-    $char = $prod[1][0];
-    return array(
-        'char'  => $char,
-        'state' => $production['goto'],
-    );
-}
+    private $grammar     = array();
+    private $augGrammar  = array();
+    private $states      = array();
 
-function getGotoState($rule, $from, &$stateList, $grammar) {
-    $ruleParts = explode('@', $rule['rhs']);
-    if (empty($ruleParts[1])) {
-        return null;
+    public function __construct($inFileName, $outFileName) {
+        $this->inFileName  = $inFileName;
+        $this->outFileName = $outFileName;
     }
 
-    $prods = array();
-    foreach ($from as $prod) {
-        $prodParts = explode('@', $prod['rhs']);
-        if (empty($prodParts[1])) {
-            continue;
-        }
-        if ($ruleParts[0] != $prodParts[0]) {
-            continue;
-        }
-        if ($ruleParts[1][0] == $prodParts[1][0]) {
-            $newRule = array(
-                'lhs' => $prod['lhs'],
-                'rhs' => $prodParts[0] . $prodParts[1][0] . '@' . substr($prodParts[1], 1),
+    public function buildGrammar() {
+        $this->inFile  = fopen($this->inFileName, 'r');
+        $this->rawInput = fread($this->inFile, filesize($this->inFileName));
+        fclose($this->inFile);
+
+        $productions = explode("\n", $this->rawInput);
+        foreach ($productions as $p) {
+            $prod = explode('->', $p);
+            $lhs  = $prod[0];
+            $rhs  = (isset($prod[1])) ? $prod[1] : null;
+            $prod = array(
+                'lhs' => $lhs,
+                'rhs' => $rhs,
             );
-            if (!in_array($newRule, $prods)) {
-                $prods[] = $newRule;
+            $this->grammar[] = $prod;
+        }
+    }
+
+    public function buildAugmentedGrammar() {
+        foreach ($this->grammar as $i => $p) {
+            if ($i == 0) {
+                $lhs = "'";
+                $rhs = $p['lhs'];
+            } else {
+                $lhs = $p['lhs'];
+                $rhs = $p['rhs'];
+            }
+            $prod = array(
+                'lhs' => $lhs,
+                'rhs' => $rhs,
+            );
+            $this->augGrammar[] = $prod;
+        }
+    }
+
+    public function buildStateList() {
+        $this->states   = array();
+        $this->states[] = $this->buildStateZero();
+        for ($i = 0; $i < count($this->states); $i++) {
+            $curr = $this->states[$i];
+            $s = 0;
+            foreach ($curr as &$prod) {
+                $gotoState = $this->getGotoState($prod, $curr);
+                if (is_array($gotoState)) {
+                    $this->states[]  = $gotoState;
+                    $gotoState = count($this->states) - 1;
+                }
+                $prod['goto'] = $gotoState;
+                if (!is_null($prod['goto'])) {
+                    $prod['goto'] = $this->formatGoto($prod);
+                }
+                var_dump($prod);
+                $s++;
             }
         }
     }
 
-    $prods = addClosureRules($prods, $grammar);
-
-    if (!checkStateExists($prods, $stateList)) {
-        $stateList[] = $prods;
-        return count($stateList) - 1;
-    } else {
-        return array_search($prods, $stateList);
-    }
-}
-
-function checkStateExists($state, $stateList) {
-    if (in_array($state, $stateList)) {
-        return true;
-    }
-    return false;
-}
-
-function buildStateZero($grammar) {
-    $prods    = array(
-        array(
-            'lhs' => $grammar[0]['lhs'],
-            'rhs' => '@' . $grammar[0]['rhs'],
-        ),
-    );
-    $lhsNts   = array();
-    $lhsNts[] = $grammar[0]['rhs'];
-    for ($i = 0; $i < count($lhsNts); $i++) {
-        foreach ($grammar as $prod) {
-            if ($lhsNts[$i] == $prod['lhs']) {
-                if (strlen($prod['rhs']) == 1 && ctype_upper($prod['rhs']) && !in_array($prod['rhs'], $lhsNts)) {
-                    $lhsNts[] = $prod['rhs'];
-                }
-                $prods[] = array(
-                    'lhs'  => $prod['lhs'],
-                    'rhs'  => '@' . $prod['rhs'],
-                );
-            }
-        }
-    }
-    return $prods;
-}
-
-function addClosureRules($state, $grammar) {
-    $lhsNts = array();
-    for ($i = 0; $i < count($state); $i++) {
-        $rhs = explode('@', $state[$i]['rhs']);
-        if (!isset($rhs[1]) || strlen($rhs[1]) == 0 || !ctype_upper($rhs[1][0])) {
-            continue;
-        }
-        $char = $rhs[1][0];
-        if (!in_array($char, $lhsNts)) {
-            $lhsNts[] = $char;
-        }
-    }
-
-    for ($i = 0; $i < count($lhsNts); $i++) {
-        foreach ($grammar as $prod) {
-            if ($lhsNts[$i] == $prod['lhs']) {
-                if (strlen($prod['rhs']) == 1 && ctype_upper($prod['rhs']) && !in_array($prod['rhs'], $lhsNts)) {
-                    $lhsNts[] = $prod['rhs'];
-                }
-                $prod = array(
-                    'lhs'  => $prod['lhs'],
-                    'rhs'  => '@' . $prod['rhs'],
-                );
-                if (!in_array($state, $prod)) {
-                    var_dump($prod);
-                    $state[] = $prod;
-                }
-            }
-        }
-    }
-    return $state;
-}
-
-function buildBaseGrammar($inFileName) {
-    // Build the base grammar
-    $inFile  = fopen($inFileName, 'r');
-    $rawData = fread($inFile, filesize($inFileName));
-    fclose($inFile);
-
-    $grammar     = array();
-    $productions = explode("\n", $rawData);
-    foreach ($productions as $p) {
-        $prod = explode('->', $p);
-        $lhs  = $prod[0];
-        $rhs  = (isset($prod[1])) ? $prod[1] : null;
-        $prod = array(
-            'lhs' => $lhs,
-            'rhs' => $rhs,
+    private function buildStateZero() {
+        $prods    = array(
+            array(
+                'lhs'  => $this->augGrammar[0]['lhs'],
+                'rhs'  => '@' . $this->augGrammar[0]['rhs'],
+            ),
         );
-        $grammar[] = $prod;
+        $lhsNts   = array();
+        $lhsNts[] = $this->augGrammar[0]['rhs'];
+        for ($i = 0; $i < count($lhsNts); $i++) {
+            foreach ($this->augGrammar as $prod) {
+                if ($lhsNts[$i] == $prod['lhs']) {
+                    if (strlen($prod['rhs']) == 1 && ctype_upper($prod['rhs']) && !in_array($prod['rhs'], $lhsNts)) {
+                        $lhsNts[] = $prod['rhs'];
+                    }
+                    $prods[] = array(
+                        'lhs'  => $prod['lhs'],
+                        'rhs'  => '@' . $prod['rhs'],
+                    );
+                }
+            }
+        }
+        return $prods;
     }
-    return $grammar;
-}
 
-function buildAugmentedGrammar($grammar) {
-    // Build the augmented grammar
-    $augGrammar = array();
-    foreach ($grammar as $i => $p) {
-        if ($i == 0) {
-            $lhs = "'";
-            $rhs = $p['lhs'];
+    private function getGotoState($rule, $from) {
+        $ruleParts = explode('@', $rule['rhs']);
+        if (empty($ruleParts[1])) {
+            return null;
+        }
+
+        $prods = array();
+        foreach ($from as $prod) {
+            $prodParts = explode('@', $prod['rhs']);
+            if (empty($prodParts[1])) {
+                continue;
+            }
+            if ($ruleParts[0] != $prodParts[0]) {
+                continue;
+            }
+            if ($ruleParts[1][0] == $prodParts[1][0]) {
+                $newRule = array(
+                    'lhs'  => $prod['lhs'],
+                    'rhs'  => $prodParts[0] . $prodParts[1][0] . '@' . substr($prodParts[1], 1),
+                );
+                if (!in_array($newRule, $prods)) {
+                    $prods[] = $newRule;
+                }
+            }
+        }
+
+        $prods = $this->addClosureRules($prods);
+
+        if (!$this->stateExists($prods)) {
+            return $prods;
         } else {
-            $lhs = $p['lhs'];
-            $rhs = $p['rhs'];
+            return array_search($prods, $this->states);
         }
-        $prod = array(
-            'lhs' => $lhs,
-            'rhs' => $rhs,
+    }
+
+    private function formatGoto($production) {
+        $prod = explode('@', $production['rhs']);
+        $char = $prod[1][0];
+        return array(
+            'char'  => $char,
+            'state' => $production['goto'],
         );
-        $augGrammar[] = $prod;
     }
-    return $augGrammar;
-}
 
-function displayGrammar($grammar) {
-    $out = '';
-    foreach ($grammar as $g) {
-        $out .= $g['lhs'] . '->' . $g['rhs'] . "\n";
+    private function stateExists($state) {
+        if (in_array($state, $this->states)) {
+            return true;
+        }
+        return false;
     }
-    return $out;
-}
 
-function displayStateList($stateList) {
-    $out = '';
-    $i   = 0;
-    foreach ($stateList as $s) {
-        $out .= "I{$i}:\n";
-        foreach ($s as $prod) {
-            $out .= '   ' . $prod['lhs'] . '->' . $prod['rhs'];
-            if (isset($prod['goto']) && !empty($prod['goto'])) {
-                $out .= str_repeat(' ', 17 - strlen($prod['rhs']));
-                $out .= 'goto(' . $prod['goto']['char'] . ')=I' . $prod['goto']['state'];
+    private function addClosureRules($state) {
+        $lhsNts = array();
+        for ($i = 0; $i < count($state); $i++) {
+            $rhs = explode('@', $state[$i]['rhs']);
+            if (!isset($rhs[1]) || strlen($rhs[1]) == 0 || !ctype_upper($rhs[1][0])) {
+                continue;
             }
+            $char = $rhs[1][0];
+            if (!in_array($char, $lhsNts)) {
+                $lhsNts[] = $char;
+            }
+        }
+
+        for ($i = 0; $i < count($lhsNts); $i++) {
+            foreach ($this->augGrammar as $prod) {
+                if ($lhsNts[$i] == $prod['lhs']) {
+                    if (strlen($prod['rhs']) == 1 && ctype_upper($prod['rhs']) && !in_array($prod['rhs'], $lhsNts)) {
+                        $lhsNts[] = $prod['rhs'];
+                    }
+                    $prod = array(
+                        'lhs'  => $prod['lhs'],
+                        'rhs'  => '@' . $prod['rhs'],
+                    );
+                    if (!in_array($state, $prod)) {
+                        $state[] = $prod;
+                    }
+                }
+            }
+        }
+        return $state;
+    }
+
+    public function displayGrammar() {
+        $out = '';
+        foreach ($this->grammar as $g) {
+            $out .= $g['lhs'] . '->' . $g['rhs'] . "\n";
+        }
+        return $out;
+    }
+
+    public function displayAugmentedGrammar() {
+        $out = '';
+        foreach ($this->augGrammar as $g) {
+            $out .= $g['lhs'] . '->' . $g['rhs'] . "\n";
+        }
+        return $out;
+    }
+
+    public function displayStateList() {
+        $out = '';
+        $i   = 0;
+        foreach ($this->states as $s) {
+            $out .= "I{$i}:\n";
+            foreach ($s as $prod) {
+                $out .= '   ' . $prod['lhs'] . '->' . $prod['rhs'];
+                if (isset($prod['goto']) && !empty($prod['goto'])) {
+                    $out .= str_repeat(' ', 17 - strlen($prod['rhs']));
+                    $out .= 'goto(' . $prod['goto']['char'] . ')=I' . $prod['goto']['state'];
+                }
+                $out .= "\n";
+            }
+            $i++;
             $out .= "\n";
         }
-        $i++;
-        $out .= "\n";
+        return $out;
     }
-    return $out;
-}
 
-function writeOutput($o, $outFileName) {
-//    $outFile = fopen($outFileName, 'r');
-    echo $o;
+    public function writeToConsole() {
+        echo "Augmented Grammar\n-----------------\n";
+        echo $this->displayAugmentedGrammar();
+        echo "\nSets of LR(0) Items\n-------------------\n";
+        echo $this->displayStateList();
+    }
+
+    public function writeToFile() {
+        
+    }
 }
 
 exit;
