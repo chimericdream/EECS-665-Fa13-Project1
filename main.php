@@ -25,6 +25,7 @@ $g->buildAugmentedGrammar();
 $g->buildStateList();
 $g->setGotoInfo();
 $g->writeToConsole();
+$g->writeToFile();
 
 //$baseGrammar = buildBaseGrammar($inFileName);
 //$augGrammar  = buildAugmentedGrammar($baseGrammar);
@@ -49,6 +50,7 @@ class Lr0Grammar {
 
     private $grammar     = array();
     private $augGrammar  = array();
+    private $rawStates   = array();
     private $states      = array();
 
     public function __construct($inFileName, $outFileName) {
@@ -92,14 +94,17 @@ class Lr0Grammar {
     }
 
     public function buildStateList() {
-        $this->states   = array();
-        $this->states[] = $this->buildStateZero();
+        $this->rawStates   = array();
+        $this->states      = array();
+        $this->rawStates[] = $this->buildStateZero();
+        $this->states[]    = $this->buildStateZero();
         for ($i = 0; $i < count($this->states); $i++) {
             $curr = $this->states[$i];
             foreach ($curr as $prod) {
                 $gotoState = $this->getGotoState($prod, $curr);
                 if (is_array($gotoState)) {
-                    $this->states[]  = $gotoState;
+                    $this->rawStates[] = $gotoState;
+                    $this->states[]    = $gotoState;
                 }
             }
         }
@@ -175,7 +180,7 @@ class Lr0Grammar {
         if (!$this->stateExists($prods)) {
             return $prods;
         } else {
-            return array_search($prods, $this->states);
+            return array_search($prods, $this->rawStates);
         }
     }
 
@@ -189,7 +194,7 @@ class Lr0Grammar {
     }
 
     private function stateExists($state) {
-        if (in_array($state, $this->states)) {
+        if (in_array($state, $this->rawStates)) {
             return true;
         }
         return false;
@@ -251,7 +256,7 @@ class Lr0Grammar {
             foreach ($s as $prod) {
                 $out .= '   ' . $prod['lhs'] . '->' . $prod['rhs'];
                 if (isset($prod['goto']) && !empty($prod['goto'])) {
-                    $out .= str_repeat(' ', 17 - strlen($prod['rhs']));
+                    $out .= str_repeat(' ', 18 - strlen($prod['rhs']));
                     $out .= 'goto(' . $prod['goto']['char'] . ')=I' . $prod['goto']['state'];
                 }
                 $out .= "\n";
@@ -270,7 +275,12 @@ class Lr0Grammar {
     }
 
     public function writeToFile() {
-        
+        $this->outFile = fopen($this->outFileName, 'w');
+        fwrite($this->outFile, "Augmented Grammar\n-----------------\n");
+        fwrite($this->outFile, $this->displayAugmentedGrammar());
+        fwrite($this->outFile, "\nSets of LR(0) Items\n-------------------\n");
+        fwrite($this->outFile, $this->displayStateList());
+        fclose($this->outFile);
     }
 }
 
