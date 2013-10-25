@@ -23,6 +23,7 @@ $g = new Lr0Grammar($inFileName, $outFileName);
 $g->buildGrammar();
 $g->buildAugmentedGrammar();
 $g->buildStateList();
+$g->setGotoInfo();
 $g->writeToConsole();
 
 //$baseGrammar = buildBaseGrammar($inFileName);
@@ -104,6 +105,23 @@ class Lr0Grammar {
         }
     }
 
+    public function setGotoInfo() {
+        foreach ($this->states as &$state) {
+            $usedChars = array();
+            foreach ($state as &$prod) {
+                $prod['goto'] = null;
+                $gotoState    = $this->getGotoState($prod, $state);
+                if (!is_null($gotoState)) {
+                    $goto = $this->formatGoto($prod, $gotoState);
+                    if (!in_array($goto['char'], $usedChars)) {
+                        $usedChars[]  = $goto['char'];
+                        $prod['goto'] = $goto;
+                    }
+                }
+            }
+        }
+    }
+
     private function buildStateZero() {
         $prods    = array(
             array(
@@ -161,12 +179,12 @@ class Lr0Grammar {
         }
     }
 
-    private function formatGoto($production) {
+    private function formatGoto($production, $state) {
         $prod = explode('@', $production['rhs']);
         $char = $prod[1][0];
         return array(
             'char'  => $char,
-            'state' => $production['goto'],
+            'state' => $state,
         );
     }
 
