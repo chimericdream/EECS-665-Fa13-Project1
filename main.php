@@ -106,7 +106,6 @@ class Lr0Grammar {
                 if (!is_null($prod['goto'])) {
                     $prod['goto'] = $this->formatGoto($prod);
                 }
-                var_dump($prod);
                 $s++;
             }
         }
@@ -147,9 +146,6 @@ class Lr0Grammar {
         foreach ($from as $prod) {
             $prodParts = explode('@', $prod['rhs']);
             if (empty($prodParts[1])) {
-                continue;
-            }
-            if ($ruleParts[0] != $prodParts[0]) {
                 continue;
             }
             if ($ruleParts[1][0] == $prodParts[1][0]) {
