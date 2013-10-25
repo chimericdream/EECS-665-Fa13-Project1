@@ -95,18 +95,11 @@ class Lr0Grammar {
         $this->states[] = $this->buildStateZero();
         for ($i = 0; $i < count($this->states); $i++) {
             $curr = $this->states[$i];
-            $s = 0;
-            foreach ($curr as &$prod) {
+            foreach ($curr as $prod) {
                 $gotoState = $this->getGotoState($prod, $curr);
                 if (is_array($gotoState)) {
                     $this->states[]  = $gotoState;
-                    $gotoState = count($this->states) - 1;
                 }
-                $prod['goto'] = $gotoState;
-                if (!is_null($prod['goto'])) {
-                    $prod['goto'] = $this->formatGoto($prod);
-                }
-                $s++;
             }
         }
     }
