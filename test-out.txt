@@ -1,0 +1,64 @@
+Augmented Grammar
+-----------------
+'->E
+E->E+E
+E->E*E
+E->(E)
+E->i
+
+Sets of LR(0) Items
+-------------------
+I0:
+   '->@E                goto(E)=I1
+   E->@E+E
+   E->@E*E
+   E->@(E)              goto(()=I2
+   E->@i                goto(i)=I3
+
+I1:
+   '->E@
+   E->E@+E              goto(+)=I4
+   E->E@*E              goto(*)=I5
+
+I2:
+   E->(@E)              goto(E)=I6
+   E->@E+E
+   E->@E*E
+   E->@(E)              goto(()=I2
+   E->@i                goto(i)=I3
+
+I3:
+   E->i@
+
+I4:
+   E->E+@E              goto(E)=I7
+   E->@E+E
+   E->@E*E
+   E->@(E)              goto(()=I2
+   E->@i                goto(i)=I3
+
+I5:
+   E->E*@E              goto(E)=I8
+   E->@E+E
+   E->@E*E
+   E->@(E)              goto(()=I2
+   E->@i                goto(i)=I3
+
+I6:
+   E->(E@)              goto())=I9
+   E->E@+E              goto(+)=I4
+   E->E@*E              goto(*)=I5
+
+I7:
+   E->E+E@
+   E->E@+E              goto(+)=I4
+   E->E@*E              goto(*)=I5
+
+I8:
+   E->E*E@
+   E->E@+E              goto(+)=I4
+   E->E@*E              goto(*)=I5
+
+I9:
+   E->(E)@
+
